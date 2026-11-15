@@ -41,6 +41,7 @@ CREATE TABLE IF NOT EXISTS layer_detail (
   FOREIGN KEY(domain_id) REFERENCES domains(id)
 );
 
+-- 草稿态汇总：明细到汇总只写这里，可被下次汇总整体重写
 CREATE TABLE IF NOT EXISTS layer_summary (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   domain_id INTEGER NOT NULL,
@@ -50,6 +51,33 @@ CREATE TABLE IF NOT EXISTS layer_summary (
   qty_sum INTEGER NOT NULL,
   line_count INTEGER NOT NULL,
   UNIQUE(domain_id, biz_day, store_code),
+  FOREIGN KEY(domain_id) REFERENCES domains(id)
+);
+
+-- 发布记录：成功与拒绝都留痕；行数/报告引用与发布区内容同源派生
+CREATE TABLE IF NOT EXISTS publish_records (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  domain_id INTEGER NOT NULL,
+  reconcile_report_id INTEGER,
+  row_count INTEGER NOT NULL DEFAULT 0,
+  status TEXT NOT NULL,
+  reason TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  FOREIGN KEY(domain_id) REFERENCES domains(id),
+  FOREIGN KEY(reconcile_report_id) REFERENCES reconcile_reports(id)
+);
+
+-- 已发布汇总：独立发布副本，只能被一次成功发布整体替换，明细到汇总永不触碰
+CREATE TABLE IF NOT EXISTS layer_summary_published (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  publish_id INTEGER NOT NULL,
+  domain_id INTEGER NOT NULL,
+  biz_day TEXT NOT NULL,
+  store_code TEXT NOT NULL,
+  amount_sum REAL NOT NULL,
+  qty_sum INTEGER NOT NULL,
+  line_count INTEGER NOT NULL,
+  FOREIGN KEY(publish_id) REFERENCES publish_records(id),
   FOREIGN KEY(domain_id) REFERENCES domains(id)
 );
 

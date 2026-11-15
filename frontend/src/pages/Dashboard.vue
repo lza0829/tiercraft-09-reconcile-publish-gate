@@ -1,13 +1,19 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
-import { getJson } from '../api'
+import { getJson, postJson } from '../api'
 
 const data = ref(null)
 const err = ref('')
+const notice = ref('')
+const busyId = ref(0)
+
+async function load() {
+  data.value = await getJson('/api/dashboard')
+}
 
 onMounted(async () => {
   try {
-    data.value = await getJson('/api/dashboard')
+    await load()
   } catch (e) {
     err.value = String(e.message || e)
   }
@@ -16,23 +22,44 @@ onMounted(async () => {
 const meter = computed(() => {
   if (!data.value) return []
   const c = data.value.分层计数
-  const max = Math.max(c.贴源层, c.明细层, c.汇总层, 1)
+  const max = Math.max(c.贴源层, c.明细层, c.汇总层, c.汇总层已发布, 1)
   return [
     { name: '贴源层', n: c.贴源层, pct: Math.round((c.贴源层 / max) * 100) },
     { name: '明细层', n: c.明细层, pct: Math.round((c.明细层 / max) * 100) },
-    { name: '汇总层', n: c.汇总层, pct: Math.round((c.汇总层 / max) * 100) },
+    { name: '汇总草稿', n: c.汇总层, pct: Math.round((c.汇总层 / max) * 100) },
+    { name: '已发布', n: c.汇总层已发布, pct: Math.round((c.汇总层已发布 / max) * 100) },
   ]
 })
+
+async function publish(domainId) {
+  busyId.value = domainId
+  err.value = ''
+  notice.value = ''
+  try {
+    const rec = await postJson('/api/publish', { domain_id: domainId })
+    if (rec.status === '成功') {
+      notice.value = `主题域 ${domainId} 发布成功：发布编号 ${rec.id}，引用对账报告 ${rec.reconcile_report_id}，共 ${rec.row_count} 行。`
+    } else {
+      err.value = `主题域 ${domainId} 发布被拒绝：${rec.reason}`
+    }
+    await load()
+  } catch (e) {
+    err.value = String(e.message || e)
+  } finally {
+    busyId.value = 0
+  }
+}
 </script>
 <template>
   <div>
     <p v-if="err" class="err">{{ err }}</p>
+    <p v-if="notice" class="okline">{{ notice }}</p>
     <template v-if="data">
       <section class="hero">
         <div class="hero-copy">
           <div class="kicker">分层主链</div>
           <h2>筑层</h2>
-          <p class="lead">贴源入仓，明细清洗，汇总落表，再做层间对账。三层条带对应建设进度，不和检道、变流同一套侧栏台面。</p>
+          <p class="lead">贴源入仓，明细清洗，汇总落表为草稿；层间对账一致后发布，已发布汇总与草稿分表隔离，只能被下一次成功发布整体替换。</p>
         </div>
         <div class="layer-meter">
           <div class="row" v-for="m in meter" :key="m.name">
@@ -47,7 +74,44 @@ const meter = computed(() => {
         <div class="item"><div class="label">主题域</div><div class="value">{{ data.主题域数 }}</div></div>
         <div class="item"><div class="label">贴源层</div><div class="value">{{ data.分层计数.贴源层 }}</div></div>
         <div class="item"><div class="label">明细层</div><div class="value">{{ data.分层计数.明细层 }}</div></div>
-        <div class="item"><div class="label">汇总层</div><div class="value">{{ data.分层计数.汇总层 }}</div></div>
+        <div class="item"><div class="label">汇总层（草稿）</div><div class="value">{{ data.分层计数.汇总层 }}</div></div>
+        <div class="item"><div class="label">汇总层（已发布）</div><div class="value">{{ data.分层计数.汇总层已发布 }}</div></div>
+      </div>
+
+      <div class="panel">
+        <h3>主题域发布近况</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>编号</th><th>名称</th><th>业务键</th><th>汇总草稿</th><th>已发布</th>
+              <th>最近对账</th><th>最近发布</th><th>发布入口</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="d in data.主题域" :key="d.编号">
+              <td>{{ d.编号 }}</td>
+              <td>{{ d.名称 }}</td>
+              <td>{{ d.业务键 }}</td>
+              <td>{{ d.汇总草稿行数 }}</td>
+              <td>{{ d.已发布行数 }}</td>
+              <td :class="d.最近对账状态 === '一致' ? 'ok' : 'warn'">{{ d.最近对账状态 }}</td>
+              <td>
+                <span :class="d.最近发布状态 === '成功' ? 'ok' : (d.最近发布状态 === '拒绝' ? 'warn' : '')">
+                  {{ d.最近发布状态 }}
+                </span>
+                <div v-if="d.发布拒绝原因" class="warn reason">{{ d.发布拒绝原因 }}</div>
+              </td>
+              <td>
+                <button
+                  class="secondary"
+                  :disabled="busyId === d.编号 || d.最近对账状态 !== '一致'"
+                  :title="d.最近对账状态 === '一致' ? '把当前草稿快照发布到已发布区' : '须最近一次对账一致才可发布'"
+                  @click="publish(d.编号)"
+                >发布</button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
       </div>
 
       <div class="panel">
@@ -76,6 +140,27 @@ const meter = computed(() => {
           </tbody>
         </table>
         <p v-else class="muted">暂无对账报告。</p>
+      </div>
+
+      <div class="panel">
+        <h3>最近发布记录</h3>
+        <table v-if="data.最近发布.length">
+          <thead>
+            <tr><th>编号</th><th>主题域</th><th>状态</th><th>对账报告</th><th>行数</th><th>原因</th><th>时间</th></tr>
+          </thead>
+          <tbody>
+            <tr v-for="p in data.最近发布" :key="p.编号">
+              <td>{{ p.编号 }}</td>
+              <td>{{ p.主题域编号 }}</td>
+              <td :class="p.状态 === '成功' ? 'ok' : 'warn'">{{ p.状态 }}</td>
+              <td>{{ p.对账报告编号 ?? '—' }}</td>
+              <td>{{ p.行数 }}</td>
+              <td>{{ p.原因 || '—' }}</td>
+              <td>{{ p.时间 }}</td>
+            </tr>
+          </tbody>
+        </table>
+        <p v-else class="muted">暂无发布记录。</p>
       </div>
     </template>
   </div>

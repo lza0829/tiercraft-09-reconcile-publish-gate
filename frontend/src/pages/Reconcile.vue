@@ -38,7 +38,7 @@ async function run() {
 <template>
   <div>
     <h2>层间对账</h2>
-    <p class="lead">核对明细行数与汇总行数合计、金额是否一致。</p>
+    <p class="lead">核对明细行数与汇总行数合计、金额是否一致。最近一次报告为「一致」时，可到「汇总层」页把当前草稿发布到已发布区。</p>
     <div class="toolbar">
       <label>
         主题域

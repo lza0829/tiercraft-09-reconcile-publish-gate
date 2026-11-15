@@ -41,7 +41,7 @@ async function run(step) {
 <template>
   <div>
     <h2>分层任务</h2>
-    <p class="lead">按主题域推进：先贴源到明细，再明细到汇总。</p>
+    <p class="lead">按主题域推进：先贴源到明细，再明细到汇总。明细到汇总只写汇总草稿，不动已发布区；对账一致后请到「汇总层」页发布。</p>
     <div class="toolbar">
       <label>
         主题域
